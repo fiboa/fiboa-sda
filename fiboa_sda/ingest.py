@@ -4,6 +4,7 @@ import multiprocessing
 import tempfile
 from urllib.parse import urlsplit
 
+import boto3
 import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
@@ -18,7 +19,8 @@ from fiboa_sda.settings import get_settings
 
 settings = get_settings()
 logger = get_logger(__name__)
-FSSPEC_STORE = FsspecStore("s3", endpoint_url=settings.SOURCE_COOP_URL)
+BUCKET_NAME = "us-west-2.opendata.source.coop"
+FSSPEC_STORE = FsspecStore("s3", skip_signature=True, region="us-west-2")
 
 # pyarrow schema used when writing out parquet
 # files to BQ
@@ -61,34 +63,21 @@ def _send_request_with_retry(*args, **kwargs):
     return r.json()
 
 
-def list_parquet_files():
+def list_parquet_files(prefix: str = "fiboa"):
     """Generate a list of available fiboa geoparquet files by crawling the STAC catalog."""
-    resp_json = _send_request_with_retry(settings.FIBOA_STAC_URL)
-    for link in resp_json["links"]:
-        # Skip non-children and relative links
-        if link["rel"] != "child":
-            continue
-        if not link["href"].startswith("https"):
-            continue
-        logger.debug(f"Opening collection - {link['href']}")
+    client = boto3.client('s3', region_name="us-west-2")
 
-        # Parse out parquet filepath from each collection
-        collection = _send_request_with_retry(link["href"])
-        asset = collection["assets"]["data"]["href"]
+    all_objects = []
+    for obj in client.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)['Contents']:
+        if obj['Key'].endswith(".parquet"):
+            all_objects.append(f"s3://{BUCKET_NAME}/{obj['Key']}")
 
-        # Skip relative links
-        if not asset.startswith("https"):
-            logger.warning(f"Skipping relative link for collection - {link['href']}")
-            continue
-
-        yield asset
+    return all_objects
 
 
-def get_parquet_url_for_dataset(fiboa_id: str) -> str:
+def get_parquet_url_for_dataset(fiboa_id: str) -> list[str]:
     """Get the geoparquet file for the given fiboa dataset by querying the STAC catalog"""
-    url = f"{settings.SOURCE_COOP_URL}/fiboa/{fiboa_id}/stac/collection.json"
-    resp_json = _send_request_with_retry(url)
-    return resp_json["assets"]["data"]["href"]
+    return list_parquet_files(prefix=f"fiboa/{fiboa_id}")
 
 
 def write_to_bq(
@@ -108,23 +97,11 @@ def write_to_bq(
             job_config=job_config,
         )
 
-
-def http_to_s3(url: str) -> str:
-    """Convert a source.coop HTTP URL to a S3 path."""
-    path = urlsplit(url).path
-    splits = path.split("/")
-    bucket = splits[1]
-    key = "/".join(splits[2:])
-    return f"s3://{bucket}/{key}"
-
-
 def normalize_dataset(url: str) -> gpd.GeoDataFrame:
     """Open a parquet file and normalize the schema."""
     # Decompose the URL into S3 bucket/key, hitting S3 directly
     # seems more reliable than going through the source.coop data proxy.
-    s3_path = http_to_s3(url)
-
-    with FSSPEC_STORE.open(s3_path) as f:
+    with FSSPEC_STORE.open(url) as f:
         df = gpd.read_parquet(f)
 
     # Any missing fiboa fields are nan-filled.
@@ -170,7 +147,7 @@ def ingest_parquet(
 
 
 def ingest_all_parquets(project_name: str, dataset_name: str, table_name: str) -> None:
-    urls = list(list_parquet_files())
+    urls = list_parquet_files()
 
     # Run across all available cores
     m = multiprocessing.Pool()
