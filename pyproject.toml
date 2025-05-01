@@ -19,6 +19,7 @@ tenacity = "^9.0.0"
 pyproj = "^3.7.1"
 utm = "^0.8.1"
 numpy = "^2.2.4"
+click = "8.1.8"
 
 
 [build-system]
