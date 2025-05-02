@@ -141,7 +141,6 @@ def normalize_dataset(url: str) -> gpd.GeoDataFrame:
 def ingest_parquet(
     url: str, project_name: str, dataset_name: str, table_name: str
 ) -> None:
-    print("inside")
     df = normalize_dataset(url)
     calculate_geometry_metrics(df)
     write_to_bq(df, project_name, dataset_name, table_name)
