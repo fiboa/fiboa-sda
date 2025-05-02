@@ -146,11 +146,11 @@ def ingest_parquet(
     write_to_bq(df, project_name, dataset_name, table_name)
 
 
-def ingest_all_parquets(project_name: str, dataset_name: str, table_name: str) -> None:
+def ingest_all_parquets(project_name: str, dataset_name: str, table_name: str, n_processes: int | None) -> None:
     urls = list_parquet_files()
 
     # Run across all available cores
-    m = multiprocessing.Pool()
+    m = multiprocessing.Pool(n_processes)
     m.map(
         functools.partial(
             ingest_parquet,
