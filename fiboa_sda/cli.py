@@ -13,8 +13,9 @@ def app():
 @click.argument("dataset_name")
 @click.argument("table_name")
 @click.option("--project-name", required=True)
-def ingest_all(dataset_name: str, table_name: str, project_name: str):
-    ingest_all_parquets(project_name, dataset_name, table_name)
+@click.option("--n-processes", required=False, default=None, type=int)
+def ingest_all(dataset_name: str, table_name: str, project_name: str, n_processes: int | None = None):
+    ingest_all_parquets(project_name, dataset_name, table_name, n_processes)
 
 
 @app.command(help="Ingest a single fiboa dataset to BQ")
@@ -22,8 +23,7 @@ def ingest_all(dataset_name: str, table_name: str, project_name: str):
 @click.argument("dataset_name")
 @click.argument("table_name")
 @click.option("--project-name", required=True)
-@click.option("--n-processes", required=False, default=None, type=int)
-def ingest_one(fiboa_id: str, dataset_name: str, table_name: str, project_name: str, n_processes: int | None = None):
+def ingest_one(fiboa_id: str, dataset_name: str, table_name: str, project_name: str):
     urls = get_parquet_url_for_dataset(fiboa_id)
     for url in urls:
         ingest_parquet(url, project_name, dataset_name, table_name, n_processes)
