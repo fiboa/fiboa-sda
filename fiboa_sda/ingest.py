@@ -20,7 +20,6 @@ from fiboa_sda.settings import get_settings
 settings = get_settings()
 logger = get_logger(__name__)
 BUCKET_NAME = "us-west-2.opendata.source.coop"
-FSSPEC_STORE = FsspecStore("s3", skip_signature=True, region="us-west-2")
 
 # pyarrow schema used when writing out parquet
 # files to BQ
@@ -101,7 +100,8 @@ def normalize_dataset(url: str) -> gpd.GeoDataFrame:
     """Open a parquet file and normalize the schema."""
     # Decompose the URL into S3 bucket/key, hitting S3 directly
     # seems more reliable than going through the source.coop data proxy.
-    with FSSPEC_STORE.open(url) as f:
+    store = FsspecStore("s3", skip_signature=True, region="us-west-2")
+    with store.open(url) as f:
         df = gpd.read_parquet(f)
 
     # Any missing fiboa fields are nan-filled.
