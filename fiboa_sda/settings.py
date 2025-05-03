@@ -1,16 +1,26 @@
 import warnings
 from functools import lru_cache
 
+from pandas.errors import SettingWithCopyWarning
 from pydantic_settings import BaseSettings
 
-# Skip geopandas warning when operating on geodataframes without
-# a geometry column.
+# Skip noisy geopandas warnings
 warnings.filterwarnings(
     action="ignore",
     category=UserWarning,
-    message="Geometry column does not contain geometry.",
+    message=r".*"
 )
-
+warnings.filterwarnings(
+    action="ignore",
+    category=SettingWithCopyWarning,
+    message=r".*",
+)
+warnings.filterwarnings(
+    action="ignore",
+    category=FutureWarning,
+    message=r".*",
+    module="geopandas"
+)
 
 class Settings(BaseSettings):
     FIBOA_STAC_URL: str = "https://fiboa.org/stac/catalog.json"

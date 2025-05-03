@@ -2,24 +2,21 @@ import functools
 import json
 import multiprocessing
 import tempfile
-from urllib.parse import urlsplit
 
 import boto3
 import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
-import requests
 from google.cloud import bigquery
-from obstore.fsspec import FsspecStore
-from tenacity import retry, stop_after_attempt
 
-from fiboa_sda.logger import get_logger
+from fiboa_sda.logger import get_logger, timer_func
 from fiboa_sda.metrics import calculate_geometry_metrics
 from fiboa_sda.settings import get_settings
 
 settings = get_settings()
 logger = get_logger(__name__)
 BUCKET_NAME = "us-west-2.opendata.source.coop"
+S3_CLIENT = boto3.client('s3', region_name="us-west-2")
 
 # pyarrow schema used when writing out parquet
 # files to BQ
@@ -53,29 +50,16 @@ SCHEMA = pa.schema(
     ]
 )
 
-
-@retry(stop=stop_after_attempt(3))
-def _send_request_with_retry(*args, **kwargs):
-    """Send a HTTP request, retrying up to 3 times."""
-    r = requests.get(*args, **kwargs)
-    r.raise_for_status()
-    return r.json()
-
-
 def list_parquet_files(prefix: str = "fiboa"):
-    """Generate a list of available fiboa geoparquet files by crawling the STAC catalog."""
-    client = boto3.client('s3', region_name="us-west-2")
-
-    all_objects = []
-    for obj in client.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)['Contents']:
+    all_keys = []
+    for obj in S3_CLIENT.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)['Contents']:
         if obj['Key'].endswith(".parquet"):
-            all_objects.append(f"s3://{BUCKET_NAME}/{obj['Key']}")
+            all_keys.append(obj['Key'])
 
-    return all_objects
+    return all_keys
 
 
-def get_parquet_url_for_dataset(fiboa_id: str) -> list[str]:
-    """Get the geoparquet file for the given fiboa dataset by querying the STAC catalog"""
+def get_s3_key_for_dataset(fiboa_id: str) -> list[str]:
     return list_parquet_files(prefix=f"fiboa/{fiboa_id}")
 
 
@@ -96,14 +80,9 @@ def write_to_bq(
             job_config=job_config,
         )
 
-def normalize_dataset(url: str) -> gpd.GeoDataFrame:
+@timer_func
+def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) -> gpd.GeoDataFrame:
     """Open a parquet file and normalize the schema."""
-    # Decompose the URL into S3 bucket/key, hitting S3 directly
-    # seems more reliable than going through the source.coop data proxy.
-    store = FsspecStore("s3", skip_signature=True, region="us-west-2")
-    with store.open(url) as f:
-        df = gpd.read_parquet(f)
-
     # Any missing fiboa fields are nan-filled.
     missing_fiboa_fields = set(settings.FIBOA_FIELDS) - set(df.columns)
     for field in missing_fiboa_fields:
@@ -125,8 +104,8 @@ def normalize_dataset(url: str) -> gpd.GeoDataFrame:
 
     # Append some metadata linking the rows in BQ back
     # to the data in source.coop.
-    df["repository_id"] = url.split("/")[-2]
-    df["url"] = url
+    df["repository_id"] = repository_id
+    df["url"] = s3_path
 
     # Handle the geometry column.  Note BQ only supports EPSG:4326.
     # We convert to WKT string because BQ has slightly different
@@ -138,12 +117,24 @@ def normalize_dataset(url: str) -> gpd.GeoDataFrame:
     return df
 
 
+@timer_func
+def download_parquet(key: str) -> gpd.GeoDataFrame:
+    with tempfile.NamedTemporaryFile(mode="w+b") as f:
+        S3_CLIENT.download_fileobj(BUCKET_NAME, key, f)
+        df = gpd.read_parquet(f.name)
+        return df
+
+
+@timer_func
 def ingest_parquet(
-    url: str, project_name: str, dataset_name: str, table_name: str
+    key: str, project_name: str, dataset_name: str, table_name: str
 ) -> None:
-    df = normalize_dataset(url)
-    calculate_geometry_metrics(df)
-    write_to_bq(df, project_name, dataset_name, table_name)
+    logger.info(f"Ingesting s3://{BUCKET_NAME}/{key} to {project_name}:{dataset_name}.{table_name}")
+
+    df = download_parquet(key)
+    normalized_df = normalize_dataset(df, repository_id=key.split("/")[1], s3_path=f"s3://{BUCKET_NAME}/{key}")
+    calculate_geometry_metrics(normalized_df)
+    write_to_bq(normalized_df, project_name, dataset_name, table_name)
 
 
 def ingest_all_parquets(project_name: str, dataset_name: str, table_name: str, n_processes: int | None) -> None:
