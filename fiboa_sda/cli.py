@@ -1,6 +1,6 @@
 import click
 
-from fiboa_sda.ingest import (get_parquet_url_for_dataset, ingest_all_parquets,
+from fiboa_sda.ingest import (get_s3_key_for_dataset, ingest_all_parquets,
                               ingest_parquet)
 
 
@@ -24,9 +24,9 @@ def ingest_all(dataset_name: str, table_name: str, project_name: str, n_processe
 @click.argument("table_name")
 @click.option("--project-name", required=True)
 def ingest_one(fiboa_id: str, dataset_name: str, table_name: str, project_name: str):
-    urls = get_parquet_url_for_dataset(fiboa_id)
-    for url in urls:
-        ingest_parquet(url, project_name, dataset_name, table_name, n_processes)
+    keys = get_s3_key_for_dataset(fiboa_id)
+    for key in keys:
+        ingest_parquet(key, project_name, dataset_name, table_name)
     click.echo(
         f"Finished ingesting {fiboa_id} to {project_name}:{dataset_name}.{table_name}"
     )
