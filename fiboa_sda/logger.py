@@ -20,13 +20,14 @@ def get_logger(name: str) -> logging.Logger:
 logger = get_logger(__name__)
 
 
-def timer_func(func): 
-    # This function shows the execution time of  
-    # the function object passed 
-    def wrap_func(*args, **kwargs): 
+class TimerFunc:
+    """Decorator is not pickleable, use a class instead."""
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, *args, **kwargs):
         start = time.perf_counter()
-        result = func(*args, **kwargs) 
+        result = self.func(*args, **kwargs)
         end = time.perf_counter()
-        logger.info(f"Function {func.__name__!r} executed in {(end-start):.4f}s")
-        return result 
-    return wrap_func 
+        logger.info(f"Function {self.func.__name__!r} executed in {(end-start):.4f}s")
+        return result

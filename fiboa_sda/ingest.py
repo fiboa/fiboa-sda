@@ -1,4 +1,5 @@
 import functools
+import concurrent.futures
 import json
 import multiprocessing
 import tempfile
@@ -9,7 +10,7 @@ import pandas as pd
 import pyarrow as pa
 from google.cloud import bigquery
 
-from fiboa_sda.logger import get_logger, timer_func
+from fiboa_sda.logger import get_logger, TimerFunc
 from fiboa_sda.metrics import calculate_geometry_metrics
 from fiboa_sda.settings import get_settings
 
@@ -80,7 +81,6 @@ def write_to_bq(
             job_config=job_config,
         )
 
-@timer_func
 def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) -> gpd.GeoDataFrame:
     """Open a parquet file and normalize the schema."""
     # Any missing fiboa fields are nan-filled.
@@ -117,7 +117,6 @@ def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) ->
     return df
 
 
-@timer_func
 def download_parquet(key: str) -> gpd.GeoDataFrame:
     with tempfile.NamedTemporaryFile(mode="w+b") as f:
         S3_CLIENT.download_fileobj(BUCKET_NAME, key, f)
@@ -125,29 +124,26 @@ def download_parquet(key: str) -> gpd.GeoDataFrame:
         return df
 
 
-@timer_func
 def ingest_parquet(
     key: str, project_name: str, dataset_name: str, table_name: str
 ) -> None:
     logger.info(f"Ingesting s3://{BUCKET_NAME}/{key} to {project_name}:{dataset_name}.{table_name}")
 
-    df = download_parquet(key)
-    normalized_df = normalize_dataset(df, repository_id=key.split("/")[1], s3_path=f"s3://{BUCKET_NAME}/{key}")
-    calculate_geometry_metrics(normalized_df)
+    df = TimerFunc(download_parquet)(key)
+    normalized_df = TimerFunc(normalize_dataset)(df, repository_id=key.split("/")[1], s3_path=f"s3://{BUCKET_NAME}/{key}")
+    TimerFunc(calculate_geometry_metrics)(normalized_df)
     write_to_bq(normalized_df, project_name, dataset_name, table_name)
 
 
 def ingest_all_parquets(project_name: str, dataset_name: str, table_name: str, n_processes: int | None) -> None:
     urls = list_parquet_files()
-
-    # Run across all available cores
-    m = multiprocessing.Pool(n_processes)
-    m.map(
-        functools.partial(
-            ingest_parquet,
-            project_name=project_name,
-            dataset_name=dataset_name,
-            table_name=table_name,
-        ),
-        urls,
-    )
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_processes) as exec:
+        list(exec.map(
+            functools.partial(
+                ingest_parquet,
+                project_name=project_name,
+                dataset_name=dataset_name,
+                table_name=table_name,
+            ),
+            urls,
+        ))

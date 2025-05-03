@@ -8,8 +8,6 @@ import utm
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
 
-from fiboa_sda.logger import timer_func
-
 
 def _geometry_flatten(geom: BaseGeometry):
     """unpack (multi)geometry"""
@@ -73,7 +71,6 @@ def _reproject_to_utm(geom: BaseGeometry, in_epsg: int):
     return geom_proj
 
 
-@timer_func
 def calculate_geometry_metrics(gdf: gpd.GeoDataFrame):
     """Calculate fields for the geometry-metrics extension.
 
