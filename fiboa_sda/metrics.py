@@ -74,7 +74,7 @@ def calculate_geometry_metrics(gdf: gpd.GeoDataFrame):
     # Vectorize as much as we can
     gdf['area'] = gdf._geometry_utm.area
     gdf['perimeter'] = gdf._geometry_utm.length
-    gdf['circluarity'] = (4 * math.pi * gdf.area) / (gdf.perimeter**2)
+    gdf['circularity'] = (4 * math.pi * gdf.area) / (gdf.perimeter**2)
     gdf['rbf'] = 1 - (gdf.area / gdf._mrr.area)
     gdf['compactness'] = gdf.area / gdf.perimeter
     bounds = gdf._geometry_utm.bounds
