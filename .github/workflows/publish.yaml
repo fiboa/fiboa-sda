@@ -25,7 +25,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-1
+          aws-region: us-west-2
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -35,7 +35,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: 767828762635.dkr.ecr.us-west-1.amazonaws.com/fiboa/fiboa-sda
+          images: 767828762635.dkr.ecr.us-west-2.amazonaws.com/fiboa/fiboa-sda
 
       - name: Build and push Docker image
         id: push
