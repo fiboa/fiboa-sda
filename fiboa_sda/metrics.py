@@ -1,6 +1,7 @@
 import functools
 import math
 
+import pandas as pd
 import geopandas as gpd
 import numpy as np
 import pyproj
@@ -71,31 +72,28 @@ def _reproject_to_utm(geom: BaseGeometry, in_epsg: int):
     return geom_proj
 
 
+def _calculate_geometry_metrics_for_row(row: pd.Series):
+    geometry_utm = _reproject_to_utm(row.geometry, 4326)
+    mrr = geometry_utm.minimum_rotated_rectangle
+    utm_bounds = geometry_utm.bounds
+    area = geometry_utm.area
+    perimeter = geometry_utm.length
+    row['area'] = area
+    row['perimeter'] = perimeter
+    row['width'] = utm_bounds[2] - utm_bounds[0]
+    row['height'] = utm_bounds[3] - utm_bounds[1]
+    row['circularity'] = (4 * math.pi * area) / (perimeter**2)
+    row["vertex_count"] = _vertex_count(geometry_utm)
+    row["rbf"] = 1 - (area / mrr.area)
+    row["azimuth"] = _azimuth_mrr(mrr)
+    row["compactness"] = area / perimeter
+    return row
+
+
 def calculate_geometry_metrics(gdf: gpd.GeoDataFrame):
     """Calculate fields for the geometry-metrics extension.
 
     https://github.com/vecorel/geometry-metrics
     """
-    # Reproject geometries to UTM.
-    gdf["_geometry_utm"] = gdf["geometry"].apply(
-        functools.partial(_reproject_to_utm, in_epsg=gdf.crs.to_epsg()), gdf["geometry"]
-    )
-    gdf["_minimum_rotated_rectangle"] = gdf["geometry"].minimum_rotated_rectangle()
-
-    # Current geometry-metrics fields
-    gdf["area"] = gdf["_geometry_utm"].area
-    gdf["perimeter"] = gdf["_geometry_utm"].length
-    gdf["width"] = gdf["_geometry_utm"].apply(lambda n: n.bounds[2] - n.bounds[0])
-    gdf["height"] = gdf["_geometry_utm"].apply(lambda n: n.bounds[3] - n.bounds[1])
-    gdf["circularity"] = (4 * math.pi * gdf.geometry.area) / (gdf.geometry.length**2)
-
-    # Additional fields.
-    gdf["vertex_count"] = gdf["geometry"].apply(_vertex_count)
-    gdf["rbf"] = 1 - (gdf.area / gdf["_minimum_rotated_rectangle"].area)
-    gdf["azimuth"] = gdf["_minimum_rotated_rectangle"].apply(_azimuth_mrr)
-    gdf["compactness"] = gdf["area"] / gdf["perimeter"]
-
-    # Drop the temp columns.
-    gdf.drop(["_geometry_utm", "_minimum_rotated_rectangle"], inplace=True, axis=1)
-
+    gdf = gdf.apply(_calculate_geometry_metrics_for_row, axis=1)
     return gdf

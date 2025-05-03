@@ -107,13 +107,9 @@ def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) ->
     df["repository_id"] = repository_id
     df["url"] = s3_path
 
-    # Handle the geometry column.  Note BQ only supports EPSG:4326.
-    # We convert to WKT string because BQ has slightly different
-    # validation logic than geopandas.  We'll convert this from string
-    # to geography type after the data is first inserted to BQ.
+    # Handle the geometry column.  BQ only supports EPSG:4326.
     if df.crs.to_epsg() != 4326:
         df = df.to_crs(crs=4326)
-    df["geometry"] = df["geometry"]
     return df
 
 
@@ -131,7 +127,7 @@ def ingest_parquet(
 
     df = TimerFunc(download_parquet)(key)
     normalized_df = TimerFunc(normalize_dataset)(df, repository_id=key.split("/")[1], s3_path=f"s3://{BUCKET_NAME}/{key}")
-    TimerFunc(calculate_geometry_metrics)(normalized_df)
+    normalized_df = TimerFunc(calculate_geometry_metrics)(normalized_df)
     write_to_bq(normalized_df, project_name, dataset_name, table_name)
 
 
