@@ -24,9 +24,9 @@ def ingest_all(dataset_name: str, table_name: str, project_name: str, n_processe
 @click.argument("table_name")
 @click.option("--project-name", required=True)
 def ingest_one(fiboa_id: str, dataset_name: str, table_name: str, project_name: str):
-    urls = get_s3_key_for_dataset(fiboa_id)
-    for url in urls:
-        ingest_parquet(url, project_name, dataset_name, table_name)
+    keys = get_s3_key_for_dataset(fiboa_id)
+    for key in keys:
+        ingest_parquet(key, project_name, dataset_name, table_name)
     click.echo(
         f"Finished ingesting {fiboa_id} to {project_name}:{dataset_name}.{table_name}"
     )
