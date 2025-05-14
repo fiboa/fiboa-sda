@@ -1,6 +1,7 @@
 on:
   push:
-    - add-lambda-handler
+    branches:
+      - add-lambda-handler
 
 jobs:
   aws_cdk:
