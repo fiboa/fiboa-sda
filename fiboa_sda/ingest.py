@@ -1,10 +1,11 @@
 import functools
 import concurrent.futures
 import json
-import multiprocessing
 import tempfile
 
 import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
 import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
@@ -17,7 +18,7 @@ from fiboa_sda.settings import get_settings
 settings = get_settings()
 logger = get_logger(__name__)
 BUCKET_NAME = "us-west-2.opendata.source.coop"
-S3_CLIENT = boto3.client('s3', region_name="us-west-2")
+S3_CLIENT = boto3.client('s3', region_name="us-west-2", config=Config(signature_version=UNSIGNED))
 
 # pyarrow schema used when writing out parquet
 # files to BQ
