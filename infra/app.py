@@ -3,7 +3,7 @@ import os
 
 import aws_cdk as cdk
 
-from infra.aws.fiboa_sda import FiboaSdaStack
+from aws.fiboa_sda import FiboaSdaStack
 
 
 app = cdk.App()
