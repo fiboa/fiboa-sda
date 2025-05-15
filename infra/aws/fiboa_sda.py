@@ -5,10 +5,12 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_ecr_assets as ecr_assets,
     aws_lambda as _lambda,
+    aws_lambda_event_sources as lambda_events,
     aws_iam as iam,
     aws_s3 as s3,
     aws_batch as batch,
     aws_s3_notifications,
+    aws_sns as sns,
     Stack,
     Duration,
     Size,
@@ -84,16 +86,32 @@ class FiboaSdaStack(Stack):
                 directory=os.path.join(os.getcwd(), "lambda-image"),
             ),
         )
-        # create s3 bucket
-        # bucket = s3.Bucket(self, "fiboa-sda-testing")
-        bucket = s3.Bucket.from_bucket_name(self, "source-coop-bucket", bucket_name="us-west-2.opendata.source.coop")
 
-        # create s3 notification for lambda function
-        notification = aws_s3_notifications.LambdaDestination(function)
-
-        # assign notification for the s3 event type (ex: OBJECT_CREATED)
-        bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            notification,
-            s3.NotificationKeyFilter(prefix="fiboa/*"),
+        # add SNS event source
+        topic = sns.Topic.from_topic_arn(
+            self,
+            "source-coop-topic",
+            topic_arn="arn:aws:sns:us-west-2:417712557820:us-west-2-opendata-source-coop_new-object"
         )
+        event_source = lambda_events.SnsEventSource(
+            topic,
+            filter_policy={
+                "S3Key": sns.SubscriptionFilter.string_filter(match_prefixes=['fiboa'])
+            }
+        )
+        function.add_event_source(event_source)
+
+
+        # # create s3 bucket
+        # # bucket = s3.Bucket(self, "fiboa-sda-testing")
+        # bucket = s3.Bucket.from_bucket_name(self, "source-coop-bucket", bucket_name="us-west-2.opendata.source.coop")
+
+        # # create s3 notification for lambda function
+        # # notification = aws_s3_notifications.LambdaDestination(function)
+
+        # # assign notification for the s3 event type (ex: OBJECT_CREATED)
+        # bucket.add_event_notification(
+        #     s3.EventType.OBJECT_CREATED,
+        #     notification,
+        #     s3.NotificationKeyFilter(prefix="fiboa/*"),
+        # )
