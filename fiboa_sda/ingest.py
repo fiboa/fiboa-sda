@@ -1,14 +1,17 @@
 import functools
 import concurrent.futures
 import json
-import multiprocessing
+import os
 import tempfile
 
 import boto3
+from botocore import UNSIGNED
+from botocore.config import Config
 import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 from fiboa_sda.logger import get_logger, TimerFunc
 from fiboa_sda.metrics import calculate_geometry_metrics
@@ -17,7 +20,7 @@ from fiboa_sda.settings import get_settings
 settings = get_settings()
 logger = get_logger(__name__)
 BUCKET_NAME = "us-west-2.opendata.source.coop"
-S3_CLIENT = boto3.client('s3', region_name="us-west-2")
+S3_CLIENT = boto3.client('s3', region_name="us-west-2", config=Config(signature_version=UNSIGNED))
 
 # pyarrow schema used when writing out parquet
 # files to BQ
@@ -67,7 +70,11 @@ def get_s3_key_for_dataset(fiboa_id: str) -> list[str]:
 def write_to_bq(
     df: pd.DataFrame, project_name: str, dataset_name: str, table_name: str
 ) -> None:
-    client = bigquery.Client(project=project_name)
+    credentials = None
+    if service_account_file := os.getenv("SERVICE_ACCOUNT_FILE"):
+        credentials = service_account.Credentials.from_service_account_info(json.loads(service_account_file))
+
+    client = bigquery.Client(project=project_name, credentials=credentials)
     job_config = bigquery.LoadJobConfig(source_format="PARQUET")
 
     with tempfile.NamedTemporaryFile() as tmp:
@@ -90,12 +97,13 @@ def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) ->
 
     # Dump any fields that aren't part of fiboa into a JSON column.
     available_external_fields = set(df.columns) - set(settings.FIBOA_FIELDS)
-    df["external_fields"] = df.apply(
-        lambda row: json.dumps(
-            {field: row[field] for field in available_external_fields}
-        ),
-        axis=1,
-    )
+
+    def _coalesce(row):
+        d = row.to_dict()
+        data = {field: d[field] for field in available_external_fields}
+        return json.dumps(data)
+
+    df["external_fields"] = df.apply(_coalesce, axis=1)
     df = df[list(settings.FIBOA_FIELDS) + ["external_fields"]]
 
     # Drop the geometry-metrics fields, we'll recalculate these.
