@@ -1,7 +1,7 @@
 import functools
 import concurrent.futures
 import json
-import multiprocessing
+import os
 import tempfile
 
 import boto3
@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 from fiboa_sda.logger import get_logger, TimerFunc
 from fiboa_sda.metrics import calculate_geometry_metrics
@@ -67,7 +68,11 @@ def get_s3_key_for_dataset(fiboa_id: str) -> list[str]:
 def write_to_bq(
     df: pd.DataFrame, project_name: str, dataset_name: str, table_name: str
 ) -> None:
-    client = bigquery.Client(project=project_name)
+    credentials = None
+    if service_account_file := os.getenv("SERVICE_ACCOUNT_FILE"):
+        credentials = service_account.Credentials.from_service_account_info(json.loads(service_account_file))
+
+    client = bigquery.Client(project=project_name, credentials=credentials)
     job_config = bigquery.LoadJobConfig(source_format="PARQUET")
 
     with tempfile.NamedTemporaryFile() as tmp:
