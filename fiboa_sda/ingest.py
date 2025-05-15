@@ -97,12 +97,13 @@ def normalize_dataset(df: gpd.GeoDataFrame, repository_id: str, s3_path: str) ->
 
     # Dump any fields that aren't part of fiboa into a JSON column.
     available_external_fields = set(df.columns) - set(settings.FIBOA_FIELDS)
-    df["external_fields"] = df.apply(
-        lambda row: json.dumps(
-            {field: row[field] for field in available_external_fields}
-        ),
-        axis=1,
-    )
+
+    def _coalesce(row):
+        d = row.to_dict()
+        data = {field: d[field] for field in available_external_fields}
+        return json.dumps(data)
+
+    df["external_fields"] = df.apply(_coalesce, axis=1)
     df = df[list(settings.FIBOA_FIELDS) + ["external_fields"]]
 
     # Drop the geometry-metrics fields, we'll recalculate these.
