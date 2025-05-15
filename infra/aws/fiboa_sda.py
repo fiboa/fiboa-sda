@@ -85,7 +85,8 @@ class FiboaSdaStack(Stack):
             ),
         )
         # create s3 bucket
-        bucket = s3.Bucket(self, "fiboa-sda-testing")
+        # bucket = s3.Bucket(self, "fiboa-sda-testing")
+        bucket = s3.Bucket.from_bucket_name(self, "source-coop-bucket", bucket_name="us-west-2.opendata.source.coop")
 
         # create s3 notification for lambda function
         notification = aws_s3_notifications.LambdaDestination(function)
